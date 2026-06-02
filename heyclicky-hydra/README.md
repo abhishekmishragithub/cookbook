@@ -45,15 +45,30 @@ STT→LLM→TTS pipeline can't do.
   `macos/.../HydraClient.swift`). Fill in the endpoint/format/auth and nothing
   else changes.
 
+## See it now (no Mac, no keys)
+
+A browser demo proves the screen-aware + pointing experience today, using Gemini
+as the brain and browser speech as a Hydra stand-in:
+
+```bash
+cd web && python3 -m http.server 8080   # open http://localhost:8080
+```
+Click **▶️ Use demo screenshot**, ask "how do I export?", watch Clicky point.
+(Demo mode needs zero setup; live mode uses real screen capture + your Worker.)
+
 ## Layout
 
 | Path | What it is | Runnable here? |
 |------|-----------|----------------|
-| `worker/`   | Cloudflare Worker: Hydra WS passthrough + Gemini vision route | ✅ `wrangler dev` |
+| `web/`      | Browser demo: screen-aware pointing + voice (Hydra stand-in) | ✅ static server |
+| `worker/`   | Cloudflare Worker: Hydra WS passthrough + Gemini `/vision` + `/tutor` | ✅ `wrangler dev` |
 | `vision/`   | Node harness: screenshot → Gemini → scene-graph JSON (has mock mode) | ✅ `node` |
 | `prompts/`  | Hydra tutor system prompt + tool definitions | n/a |
 | `macos/`    | Swift orchestrator scaffold to drop into a `clicky` fork | ⚠️ needs Xcode/Mac |
-| `docs/`     | Integration guide, Hydra API contract, build phases | n/a |
+| `docs/`     | Demo script, integration guide, Hydra API contract, build phases | n/a |
+
+The thing that makes it stand out is in **`docs/DEMO_SCRIPT.md`** — lead with
+barge-in (interrupting it mid-sentence), point-while-talking, and proactive help.
 
 ## Status
 

@@ -24,9 +24,13 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
 
+    // CORS preflight for the browser demo.
+    if (req.method === "OPTIONS") return cors(new Response(null, { status: 204 }), env);
+
     if (url.pathname === "/hydra") return proxyHydra(req, env);
-    if (url.pathname === "/vision" && req.method === "POST") return vision(req, env);
-    if (url.pathname === "/health") return json({ ok: true });
+    if (url.pathname === "/vision" && req.method === "POST") return cors(await vision(req, env), env);
+    if (url.pathname === "/tutor" && req.method === "POST") return cors(await tutor(req, env), env);
+    if (url.pathname === "/health") return cors(json({ ok: true }), env);
 
     return new Response("not found", { status: 404 });
   },
@@ -109,40 +113,73 @@ async function vision(req: Request, env: Env): Promise<Response> {
     return json({ error: "image and prompt are required" }, 400);
   }
 
-  const model = env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
-  const endpoint =
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent` +
-    `?key=${env.GEMINI_API_KEY}`;
-
-  const geminiBody = {
-    contents: [{
-      role: "user",
-      parts: [
-        { text: body.prompt },
-        { inline_data: { mime_type: body.mimeType || "image/jpeg", data: body.image } },
-      ],
-    }],
-    // Force strict JSON back so the orchestrator can parse without scraping.
-    generationConfig: { responseMimeType: "application/json", temperature: 0 },
-  };
-
-  const r = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(geminiBody),
-  });
-
-  if (!r.ok) return json({ error: "gemini error", status: r.status, detail: await r.text() }, 502);
-
-  const data = (await r.json()) as any;
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
-  // Already JSON (responseMimeType), but parse defensively.
-  let scene: unknown;
-  try { scene = JSON.parse(text); } catch { scene = { raw: text }; }
+  const scene = await callGemini(env, body.image, body.mimeType || "image/jpeg", body.prompt);
   return json({ scene });
 }
 
 /* ------------------------------------------------------------------ */
+/* 3. Tutor brain (browser demo stand-in for Hydra)                    */
+/*    image + spoken question -> { say, point_label }                  */
+/* ------------------------------------------------------------------ */
+
+interface TutorRequest {
+  image: string;
+  mimeType?: string;
+  question: string;
+}
+
+const TUTOR_PROMPT = `You are Clicky, a warm, quick on-screen tutor. The user asks
+a question about what's on their screen (the image). Answer in ONE or TWO short
+spoken sentences — friendly, like a friend leaning over their shoulder. If there
+is a specific on-screen element they should look at, name it exactly as it reads
+on screen so a pointer can be drawn to it.
+
+Return STRICT JSON:
+{
+  "say": "what you'd say out loud, short",
+  "point_label": "exact label of the element to point at, or null",
+  "box_2d": [ymin, xmin, ymax, xmax]  // 0-1000 normalized for that element, or null
+}`;
+
+async function tutor(req: Request, env: Env): Promise<Response> {
+  let body: TutorRequest;
+  try { body = (await req.json()) as TutorRequest; }
+  catch { return json({ error: "invalid JSON body" }, 400); }
+  if (!body.image || !body.question) return json({ error: "image and question required" }, 400);
+
+  const scene = await callGemini(env, body.image, body.mimeType || "image/jpeg",
+    `${TUTOR_PROMPT}\n\nUser asked: "${body.question}"`);
+  return json(scene);
+}
+
+/** Shared Gemini JSON call. */
+async function callGemini(env: Env, image: string, mimeType: string, prompt: string): Promise<unknown> {
+  const model = env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+  const endpoint =
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
+  const r = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }, { inline_data: { mime_type: mimeType, data: image } }] }],
+      generationConfig: { responseMimeType: "application/json", temperature: 0 },
+    }),
+  });
+  if (!r.ok) return { error: "gemini error", status: r.status, detail: await r.text() };
+  const data = (await r.json()) as any;
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+  try { return JSON.parse(text); } catch { return { raw: text }; }
+}
+
+/* ------------------------------------------------------------------ */
+
+function cors(res: Response, env: Env): Response {
+  const h = new Headers(res.headers);
+  h.set("Access-Control-Allow-Origin", env.ALLOWED_ORIGIN || "*");
+  h.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  h.set("Access-Control-Allow-Headers", "Content-Type");
+  return new Response(res.body, { status: res.status, headers: h });
+}
 
 function json(obj: unknown, status = 200): Response {
   return new Response(JSON.stringify(obj), {

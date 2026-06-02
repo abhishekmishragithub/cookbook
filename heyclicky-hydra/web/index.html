@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HeyClicky × Hydra — demo</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="stage">
+    <!-- The screen (live capture or the bundled demo image) -->
+    <img id="demoImg" alt="screen" />
+    <video id="screen" autoplay muted playsinline></video>
+    <!-- Pointer + highlight overlay -->
+    <canvas id="overlay"></canvas>
+
+    <!-- Clicky the character + speech bubble -->
+    <div id="clicky" class="hidden">
+      <div id="bubble"></div>
+      <div id="face">🤖</div>
+    </div>
+  </div>
+
+  <div id="controls">
+    <div class="row">
+      <button id="btnLive">🖥️ Share screen (live)</button>
+      <button id="btnDemo">▶️ Use demo screenshot</button>
+    </div>
+    <div class="row">
+      <input id="q" type="text" placeholder="Ask Clicky… e.g. how do I export this?" />
+      <button id="btnAsk">Ask</button>
+      <button id="btnMic" title="Hold to talk">🎙️</button>
+    </div>
+    <div class="row tiny">
+      <label>Worker URL <input id="worker" type="text" placeholder="https://your-worker.workers.dev" /></label>
+      <span id="status">idle</span>
+    </div>
+    <p class="note">
+      Stand-in demo: Gemini is the brain, the browser voice is a placeholder for
+      <b>Hydra</b>. Swap in Hydra for real full-duplex voice + barge-in.
+    </p>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
