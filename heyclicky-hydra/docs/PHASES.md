@@ -39,9 +39,14 @@ WebSocket." Prove it before building UI.
 - [ ] Tune persona, choreograph an interrupt moment, tighten latency.
 - [ ] Record. Lead with the interruption — that's the Hydra差.
 
-## Phase 5 — Real-world action (the booking flow)
-- [ ] Connect the booking MCP server (Zomato / Goibibo) to `BookingMCP`.
-- [ ] Handle the login/auth handoff.
-- [ ] Demo: "book me a flight to Goa next Friday" → confirm out loud → book.
-      **Gate:** Hydra only books after explicit spoken confirmation and reports
-      the real result.
+## Phase 5 — Real-world actions via tool calling
+The goal: show Hydra *doing* things by voice, through slick MCP tool calling —
+not just booking. Candidate actions (pick whichever MCP servers exist / are
+easiest first):
+- [ ] **Media**: "play lo-fi on Spotify" / "pull up that video on YouTube".
+- [ ] **Travel/commerce**: book an Airbnb / flight (Goibibo) / food (Zomato).
+- [ ] Generalize `BookingMCP` → an `ActionRouter` that maps a tool name to the
+      right MCP server and relays its result verbatim.
+- [ ] Handle any login/auth handoff per service.
+- [ ] **Gate:** Hydra only fires an action after explicit spoken confirmation,
+      and reports the real tool result — never a fabricated one.
