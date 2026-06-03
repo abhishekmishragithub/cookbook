@@ -52,11 +52,11 @@ async function proxyHydra(req: Request, env: Env): Promise<Response> {
   server.accept();
 
   // Open the upstream socket to Hydra with the key the app never sees.
-  // (Auth header on the upgrade; if Hydra wants the key in the first JSON
-  // message instead, do that in the `server.message` handler before relaying.)
-  const upstream = new WebSocket(env.HYDRA_WS_URL, {
-    headers: { Authorization: `Bearer ${env.HYDRA_API_KEY}` },
-  } as unknown as string); // CF accepts an init object at runtime
+  // Hydra auths via the `api_key` query parameter (see docs/HYDRA_CONTRACT.md §1).
+  const upUrl = new URL(env.HYDRA_WS_URL);
+  upUrl.searchParams.set("api_key", env.HYDRA_API_KEY);
+  if (!upUrl.searchParams.get("model")) upUrl.searchParams.set("model", "hydra");
+  const upstream = new WebSocket(upUrl.toString());
 
   const upReady = new Promise<void>((resolve) => {
     upstream.addEventListener("open", () => resolve(), { once: true });

@@ -2,75 +2,79 @@ import Foundation
 
 /// Events surfaced from Hydra to the orchestrator.
 enum HydraEvent {
-    case audio(Data)                                   // downlink audio to play
-    case toolCall(id: String, name: String, args: [String: Any])
-    case userInterrupted                               // barge-in: stop playback
-    case transcript(String)                            // optional captions
+    case audioDelta(Data)                              // PCM16 24kHz to play (gapless)
+    case toolCall(callId: String, name: String, args: [String: Any])
+    case userInterrupted                               // speech_started → barge-in
+    case transcript(String)
     case closed(reason: String)
 }
 
-/// WebSocket client to the Cloudflare Worker `/hydra` passthrough (which adds
-/// the Hydra key server-side). Full-duplex: uplink mic audio streams while
-/// downlink audio/events arrive concurrently.
+/// Hydra speech-to-speech client. Speaks the OpenAI-Realtime-style protocol
+/// verified against smallest-inc/hydra_agents (see docs/HYDRA_CONTRACT.md).
 ///
-/// TODO(hydra): the message framing below is the assumed contract from
-/// docs/HYDRA_CONTRACT.md. Adjust `encode*` / `decode` to Hydra's real wire
-/// format once confirmed. Everything else (orchestrator, overlay) is unaffected.
+/// Connect either directly
+/// (`wss://api.smallest.ai/waves/v1/s2s?model=hydra&api_key=KEY`) or via the
+/// Worker `/hydra` passthrough (which injects the key). Uplink audio is PCM16
+/// 16kHz mono, base64 in `input_audio_buffer.append`.
 final class HydraClient {
-    private let proxyURL: URL          // e.g. wss://your-worker.workers.dev/hydra
+    private let url: URL
     private var task: URLSessionWebSocketTask?
     private let session = URLSession(configuration: .default)
 
+    // Accumulate streamed function-call argument deltas by call_id.
+    private var fnArgs: [String: (name: String, args: String)] = [:]
+
     var onEvent: ((HydraEvent) -> Void)?
 
-    init(proxyURL: URL) { self.proxyURL = proxyURL }
+    /// Session config to send on `session.created`.
+    private var pendingConfig: [String: Any] = [:]
 
-    func connect(systemPrompt: String, tools: Any, voice: String = "warm_tutor") {
-        let task = session.webSocketTask(with: proxyURL)
+    /// - Parameter url: direct Hydra URL (with api_key) or your Worker `/hydra`.
+    init(url: URL) { self.url = url }
+
+    func connect(systemPrompt: String, tools: [[String: Any]], voice: String = "wren",
+                 speaksFirst: Bool = true) {
+        pendingConfig = [
+            "instructions": systemPrompt,
+            "voice": voice,
+            "tools": tools.map { t -> [String: Any] in var x = t; x["type"] = "function"; return x },
+            "generate_initial_response": speaksFirst,
+        ]
+        let task = session.webSocketTask(with: url)
         self.task = task
         task.resume()
-
-        // First message configures the session (see HYDRA_CONTRACT §3).
-        let config: [String: Any] = [
-            "type": "session.update",
-            "session": [
-                "system_prompt": systemPrompt,
-                "voice": voice,
-                "tools": tools,
-                "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16",
-            ],
-        ]
-        sendJSON(config)
         receiveLoop()
     }
 
-    /// Stream a chunk of mic audio (PCM16 @16k mono by default).
+    /// Stream a mic chunk (PCM16 @16k mono) as base64.
     func sendAudio(_ pcm: Data) {
-        task?.send(.data(pcm)) { if let e = $0 { NSLog("hydra send audio: \(e)") } }
+        send(["type": "input_audio_buffer.append", "audio": pcm.base64EncodedString()])
     }
 
-    /// Push the latest Gemini scene summary as mid-stream context.
+    /// Inject the Gemini scene summary as a system message item.
     func appendContext(_ text: String) {
-        sendJSON(["type": "context.append", "role": "system", "text": text])
+        send(["type": "conversation.item.create",
+              "item": ["type": "message", "role": "system",
+                       "content": [["type": "input_text", "text": text]]]])
     }
 
-    /// Return the result of a client-executed tool call back to Hydra.
-    func sendToolResult(id: String, output: [String: Any]) {
-        sendJSON(["type": "tool.result", "tool_call_id": id, "output": output])
+    /// Return a tool result, then ask Hydra to resume narrating.
+    func sendToolResult(callId: String, output: String) {
+        send(["type": "conversation.item.create",
+              "item": ["type": "function_call_output", "call_id": callId, "output": output]])
+        send(["type": "response.create"])
     }
 
-    func close() {
-        task?.cancel(with: .goingAway, reason: nil)
-        task = nil
-    }
+    func cancelResponse() { send(["type": "response.cancel"]) }
+
+    func close() { task?.cancel(with: .goingAway, reason: nil); task = nil }
 
     // MARK: - wire
 
-    private func sendJSON(_ obj: [String: Any]) {
+    private func send(_ obj: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: obj),
               let str = String(data: data, encoding: .utf8) else { return }
-        task?.send(.string(str)) { if let e = $0 { NSLog("hydra send json: \(e)") } }
+        task?.send(.string(str)) { if let e = $0 { NSLog("hydra send: \(e)") } }
     }
 
     private func receiveLoop() {
@@ -79,38 +83,60 @@ final class HydraClient {
             switch result {
             case .failure(let err):
                 self.onEvent?(.closed(reason: err.localizedDescription))
-                return
             case .success(let msg):
-                switch msg {
-                case .data(let d):
-                    // Default contract: raw binary frames are downlink audio.
-                    self.onEvent?(.audio(d))
-                case .string(let s):
-                    self.handleJSON(s)
-                @unknown default: break
-                }
+                if case .string(let s) = msg { self.handle(s) }
                 self.receiveLoop()
             }
         }
     }
 
-    private func handleJSON(_ s: String) {
+    private func handle(_ s: String) {
         guard let data = s.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = obj["type"] as? String else { return }
 
         switch type {
-        case "tool.call":
-            let id = obj["id"] as? String ?? UUID().uuidString
-            let name = obj["name"] as? String ?? ""
-            let args = obj["arguments"] as? [String: Any] ?? [:]
-            onEvent?(.toolCall(id: id, name: name, args: args))
-        case "speech.interrupted":
+        case "session.created":
+            send(["type": "session.configure", "session": pendingConfig])
+
+        case "input_audio_buffer.speech_started":
             onEvent?(.userInterrupted)
-        case "transcript.delta":
-            if let t = obj["text"] as? String { onEvent?(.transcript(t)) }
+
+        case "response.output_audio.delta":
+            if let b64 = obj["delta"] as? String, let pcm = Data(base64Encoded: b64) {
+                onEvent?(.audioDelta(pcm))
+            }
+
+        case "response.function_call_arguments.delta":
+            if let id = obj["call_id"] as? String {
+                var st = fnArgs[id] ?? (name: obj["name"] as? String ?? "", args: "")
+                if let n = obj["name"] as? String { st.name = n }
+                st.args += obj["delta"] as? String ?? ""
+                fnArgs[id] = st
+            }
+
+        case "response.function_call_arguments.done":
+            guard let id = obj["call_id"] as? String else { return }
+            let st = fnArgs[id]
+            let name = (obj["name"] as? String) ?? st?.name ?? ""
+            let argStr = (obj["arguments"] as? String) ?? st?.args ?? "{}"
+            fnArgs[id] = nil
+            let args = (try? JSONSerialization.jsonObject(with: Data(argStr.utf8))) as? [String: Any] ?? [:]
+            onEvent?(.toolCall(callId: id, name: name, args: args))
+
+        case "conversation.item.done":
+            if let item = obj["item"] as? [String: Any],
+               let content = item["content"] as? [[String: Any]],
+               let text = content.first?["text"] as? String {
+                onEvent?(.transcript(text))
+            }
+
+        case "error":
+            let e = obj["error"] as? [String: Any]
+            NSLog("hydra error: \(e?["message"] ?? "unknown")")
+
         default:
-            break // audio.delta etc. — handle if Hydra sends audio as JSON
+            break // session.configured, response.created/done, etc.
         }
     }
 }

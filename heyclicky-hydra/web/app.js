@@ -20,10 +20,10 @@ const DEMO_IMG = "demo-screen.svg";
 
 /* ---- canned brain for demo mode (matches demo-screen.svg) ---- */
 const DEMO_SCENE = [
-  { label: "Color tab",            box: [30, 437, 62, 500] },
-  { label: "Primary color wheels", box: [587, 31, 950, 328] },
-  { label: "Node editor",          box: [587, 508, 900, 844] },
-  { label: "Export button",        box: [925, 875, 975, 969] },
+  { label: "Color tab",            box: [30, 437, 62, 500],  desc: "switches to the color grading workspace" },
+  { label: "Primary color wheels", box: [587, 31, 950, 328], desc: "lift / gamma / gain wheels for grading" },
+  { label: "Node editor",          box: [587, 508, 900, 844],desc: "node graph for stacking effects" },
+  { label: "Export button",        box: [925, 875, 975, 969],desc: "renders the timeline to a file" },
 ];
 function demoBrain(q) {
   const t = q.toLowerCase();
@@ -177,11 +177,106 @@ function setupMic() {
   $("btnMic").addEventListener("touchend", (e) => { e.preventDefault(); stop(); });
 }
 
+/* ================= REAL HYDRA MODE ================= */
+/* Full-duplex Hydra voice + screen awareness + pointing, in the browser. */
+
+let hydra = null;
+let visionTimer = null;
+let scene = [];          // current [{label, box, desc}] for pointing + context
+
+const HYDRA_INSTRUCTIONS =
+  "You are Clicky, a warm, quick on-screen tutor sitting by the user's cursor. " +
+  "You can see their screen via an 'ON SCREEN NOW' list and you can point at things. " +
+  "Talk like a friend — short sentences, one idea at a time. When you mention " +
+  "something on screen, call point_at with its exact label AS you say it. If the " +
+  "screen list is empty or stale, call look() first. The user can interrupt you " +
+  "any time — when they do, stop and listen.";
+
+const HYDRA_TOOLS = [
+  { name: "point_at", description: "Point the cursor at an on-screen element by its exact label.",
+    parameters: { type: "object", properties: { label: { type: "string" } }, required: ["label"] } },
+  { name: "highlight", description: "Draw an attention ring around an element by its exact label.",
+    parameters: { type: "object", properties: { label: { type: "string" } }, required: ["label"] } },
+  { name: "look", description: "Re-read the screen and return the current element labels.",
+    parameters: { type: "object", properties: {} } },
+];
+
+const SCENE_PROMPT =
+  'Return STRICT JSON {"summary": "...", "elements":[{"label":"short name","kind":"button|tab|panel|field|icon|text","box_2d":[ymin,xmin,ymax,xmax],"desc":"short"}]}. ' +
+  "box_2d ints 0-1000 normalized. Cap at the 20 most relevant interactive elements. Labels under 5 words.";
+
+function contextBlock() {
+  const lines = scene.map((e) => `- "${e.label}" — ${e.desc || ""}`);
+  return "ON SCREEN NOW:\n" + lines.join("\n");
+}
+function sceneBox(label) {
+  const n = (label || "").toLowerCase();
+  const m = scene.find((e) => e.label.toLowerCase() === n)
+    || scene.find((e) => e.label.toLowerCase().includes(n) || n.includes(e.label.toLowerCase()));
+  return m ? m.box : null;
+}
+
+async function refreshScene() {
+  if (mode === "demo") { scene = DEMO_SCENE; return scene; }
+  const u = workerUrl(); if (!u) return scene;
+  try {
+    const res = await fetch(u + "/vision", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: captureFrame(), mimeType: "image/jpeg", prompt: SCENE_PROMPT }),
+    });
+    const { scene: s } = await res.json();
+    if (s?.elements) scene = s.elements.map((e) => ({ label: e.label, box: e.box_2d, desc: e.desc }));
+  } catch {}
+  return scene;
+}
+
+async function connectHydra() {
+  if (!mode) { setStatus("pick a source first"); return; }
+  const key = $("apiKey").value.trim();
+  if (!key) { setStatus("paste your smallest.ai key"); return; }
+  localStorage.setItem("hydraKey", key);
+
+  await refreshScene();
+  hydra = new HydraSession({
+    apiKey: key,
+    instructions: HYDRA_INSTRUCTIONS,
+    voice: "wren",
+    tools: HYDRA_TOOLS,
+    speaksFirst: true,
+    onStatus: (s, err) => setStatus(err ? "hydra: " + err : "hydra: " + s),
+    onUserSpeech: () => { setStatus("↩ listening (you can interrupt)"); },
+    onAssistantText: (t) => { bubble.textContent = t; bubble.classList.add("show"); },
+    onToolCall: async (name, args) => {
+      if (name === "look") { await refreshScene(); hydra?.appendContext(contextBlock());
+        return JSON.stringify({ elements: scene.map((e) => e.label) }); }
+      const box = sceneBox(args.label);
+      if (!box) return JSON.stringify({ ok: false, error: "label not found; call look()" });
+      pointAt(box, args.label);
+      return JSON.stringify({ ok: true, label: args.label });
+    },
+  });
+  await hydra.connect();
+  hydra.appendContext(contextBlock());
+  // live screens change — keep Hydra's view fresh
+  if (mode === "live") visionTimer = setInterval(async () => { await refreshScene(); hydra?.appendContext(contextBlock()); }, 2500);
+  $("btnHydra").disabled = true; $("btnHangup").disabled = false;
+}
+
+function hangup() {
+  hydra?.disconnect(); hydra = null;
+  if (visionTimer) { clearInterval(visionTimer); visionTimer = null; }
+  $("btnHydra").disabled = false; $("btnHangup").disabled = true;
+  setStatus("hung up");
+}
+
 /* ---- wire up ---- */
 function setStatus(s) { statusEl.textContent = s; }
 $("worker").value = localStorage.getItem("workerUrl") || "";
+$("apiKey").value = localStorage.getItem("hydraKey") || "";
 $("btnDemo").onclick = startDemo;
 $("btnLive").onclick = startLive;
+$("btnHydra").onclick = connectHydra;
+$("btnHangup").onclick = hangup;
 $("btnAsk").onclick = () => ask($("q").value.trim());
 $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") ask($("q").value.trim()); });
 window.addEventListener("resize", sizeOverlay);

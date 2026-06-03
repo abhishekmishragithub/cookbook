@@ -19,26 +19,35 @@ into a scene-graph; the orchestrator resolves label→pixel coords and drives a
 pointing overlay. Voice never blocks on vision.
 
 ## What's done
-- `web/` — runnable browser demo (zero-setup demo mode + live screen-capture mode).
-- `worker/` — Cloudflare Worker: `/hydra` WS passthrough, `/vision`, `/tutor`. Typechecks clean.
+- **Hydra protocol is REAL/verified** against `smallest-inc/hydra_agents`
+  (OpenAI-Realtime style; see `docs/HYDRA_CONTRACT.md`). No longer assumed.
+- `web/hydra.js` — full browser Hydra client (mic@16k → WS → playback@24k,
+  barge-in, tool calling) ported from the reference app.
+- `web/` — browser demo with **real Hydra mode** (key + screen → voice + screen
+  context + pointing) and a keyless Gemini/browser-voice stand-in mode.
+- `worker/` — Cloudflare Worker: `/hydra` WS passthrough (real endpoint +
+  api_key query param), `/vision`, `/tutor`. Typechecks clean.
 - `vision/scene_graph.mjs` — screenshot → scene-graph harness (has `--mock`).
 - `prompts/` — Hydra tutor persona + tool defs.
-- `macos/HydraClicky/` — Swift orchestrator scaffold (does NOT compile here; needs Xcode).
+- `macos/HydraClicky/` — Swift orchestrator scaffold, `HydraClient.swift` now
+  matches the real protocol (does NOT compile here; needs Xcode).
 
 ## What's NOT done (next steps, in order)
-1. **Fill `docs/HYDRA_CONTRACT.md`** with the real Hydra endpoint / auth / audio
-   format / tool-calling schema. Everything downstream depends on this.
-2. **Phase 0 spike**: minimal Swift mic→Hydra→speaker to prove barge-in feels
-   great. (See `docs/PHASES.md`.)
+1. **Verify the real Hydra browser demo** end-to-end with a live smallest.ai key
+   (mic perms, audio in/out, barge-in, point_at). Logic is in place; needs a
+   human with a key + mic. This is the fastest path to a showable demo.
+2. **Phase 0 spike (native)**: minimal Swift mic→Hydra→speaker on a Mac to
+   confirm the same feel natively. (See `docs/PHASES.md`.)
 3. Phases 1–4: wire Hydra + Gemini into a `farzaa/clicky` fork per
-   `docs/INTEGRATION.md`.
+   `docs/INTEGRATION.md` (HydraClient.swift already matches the real protocol).
 4. Phase 5: real-world actions (Spotify / YouTube / Airbnb / booking) via MCP
    tool calling — generalize `BookingMCP` → `ActionRouter`.
 
 ## Constraints learned
-- Original cloud session was Linux (no Xcode) — Swift app must be built on a Mac.
-- The Hydra wire protocol is the only true unknown; isolated in `HydraClient.swift`
-  + the Worker passthrough so filling it in doesn't ripple.
+- This cloud session is Linux (no Xcode) — the native Swift app must be built on
+  a Mac. The **browser demo (`web/`) needs no Mac** and uses real Hydra.
+- Hydra protocol = OpenAI-Realtime style, verified from the reference repo;
+  isolated in `web/hydra.js`, `HydraClient.swift`, and the Worker passthrough.
 
 ## Run locally
 See `README.md` "See it now" and `web/README.md`. TL;DR:

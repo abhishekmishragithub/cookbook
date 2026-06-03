@@ -45,22 +45,25 @@ STT→LLM→TTS pipeline can't do.
   `macos/.../HydraClient.swift`). Fill in the endpoint/format/auth and nothing
   else changes.
 
-## See it now (no Mac, no keys)
-
-A browser demo proves the screen-aware + pointing experience today, using Gemini
-as the brain and browser speech as a Hydra stand-in:
+## See it now (browser, no Mac)
 
 ```bash
 cd web && python3 -m http.server 8080   # open http://localhost:8080
 ```
-Click **▶️ Use demo screenshot**, ask "how do I export?", watch Clicky point.
-(Demo mode needs zero setup; live mode uses real screen capture + your Worker.)
+
+Two ways to run, both in the browser:
+- **Quick (no keys):** click **▶️ Use demo screenshot**, ask "how do I export?" —
+  Gemini brain + browser-voice stand-in, watch Clicky point.
+- **Real Hydra:** pick a screen source, paste your smallest.ai key, hit
+  **🎙️ Connect Hydra** — genuine full-duplex Hydra voice + screen awareness +
+  pointing. Just talk, and interrupt it any time. (Protocol ported from the
+  official [`smallest-inc/hydra_agents`](https://github.com/smallest-inc/hydra_agents).)
 
 ## Layout
 
 | Path | What it is | Runnable here? |
 |------|-----------|----------------|
-| `web/`      | Browser demo: screen-aware pointing + voice (Hydra stand-in) | ✅ static server |
+| `web/`      | Browser demo: real Hydra voice (`hydra.js`) + screen-aware pointing, with a keyless stand-in mode | ✅ static server |
 | `worker/`   | Cloudflare Worker: Hydra WS passthrough + Gemini `/vision` + `/tutor` | ✅ `wrangler dev` |
 | `vision/`   | Node harness: screenshot → Gemini → scene-graph JSON (has mock mode) | ✅ `node` |
 | `prompts/`  | Hydra tutor system prompt + tool definitions | n/a |

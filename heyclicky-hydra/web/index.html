@@ -31,16 +31,24 @@
       <button id="btnAsk">Ask</button>
       <button id="btnMic" title="Hold to talk">🎙️</button>
     </div>
+    <div class="row">
+      <button id="btnHydra">🎙️ Connect Hydra (real voice)</button>
+      <button id="btnHangup" disabled>⏹ Hang up</button>
+    </div>
     <div class="row tiny">
       <label>Worker URL <input id="worker" type="text" placeholder="https://your-worker.workers.dev" /></label>
+      <label>Hydra key <input id="apiKey" type="password" placeholder="smallest.ai api key" /></label>
       <span id="status">idle</span>
     </div>
     <p class="note">
-      Stand-in demo: Gemini is the brain, the browser voice is a placeholder for
-      <b>Hydra</b>. Swap in Hydra for real full-duplex voice + barge-in.
+      <b>Two ways to run.</b> Quick: type a question (Gemini brain + browser voice
+      stand-in). Real: pick a screen source, paste your smallest.ai key, hit
+      <b>Connect Hydra</b> — now it's genuine full-duplex Hydra voice with screen
+      awareness + pointing. Just talk, and interrupt it any time.
     </p>
   </div>
 
+  <script src="hydra.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
