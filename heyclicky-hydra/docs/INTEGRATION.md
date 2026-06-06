@@ -1,56 +1,54 @@
 # Integrating into a `clicky` fork
 
-The Mac app is a **fork of [`farzaa/clicky`](https://github.com/farzaa/clicky)**
-(MIT) with the voice layer swapped from a 3-stage pipeline to Hydra. This guide
-maps what to keep, what to remove, and where the new `macos/HydraClicky/` files
-go.
+The app is a **fork of [`farzaa/clicky`](https://github.com/farzaa/clicky)**
+(MIT) with the voice layer swapped to Hydra and the brain swapped to a
+voice-OS-agent that runs real macOS actions.
 
-## Keep (reuse as-is or lightly adapt)
+## Keep (reuse from clicky)
 | Clicky piece | Reuse for |
 |---|---|
-| Menu-bar app shell, `NSPanel` overlay, character UI | unchanged |
-| `[POINT:x,y]` cursor animation | drive it from `PointingOverlay.point(at:)` instead of parsing tags |
-| `ScreenCaptureKit` capture + multi-monitor `screenN` logic | feed `VisionLoop` (replace the heuristic capture in `VisionLoop.grabMainDisplayJPEG`) |
-| Mic capture tap (was → AssemblyAI) | retarget to `MicCapture.onChunk` |
-| Cloudflare `worker/` pattern | replaced by this repo's `worker/` (Hydra + Gemini routes) |
+| Menu-bar app shell, `NSPanel`, hotkey/always-on plumbing | unchanged |
+| Mic capture tap (was → AssemblyAI) | retarget to `MicCapture.onChunk` (PCM16 16k) |
+| Any audio playback infra | back `AudioPlayer` (PCM16 24k, gapless, `flush()`) |
 
 ## Remove (the old pipeline)
-- `AssemblyAI*.swift` — STT. Hydra hears audio directly.
-- `ClaudeAPI.swift` streaming client — Hydra is the brain now.
-- ElevenLabs TTS calls — Hydra speaks directly.
-- Any `[POINT:...]` **text-parsing** — pointing is a tool call now, not text.
+- `AssemblyAI*.swift` (STT) — Hydra hears directly.
+- `ClaudeAPI.swift` (LLM) — Hydra is the brain.
+- ElevenLabs TTS — Hydra speaks directly.
+- `[POINT:...]` text parsing / cursor overlay — not used by the agent (keep only
+  if you also want the optional "look at my screen" tutor mode).
 
 ## Add (from `macos/HydraClicky/`)
-- `HydraClient.swift` — full-duplex WS to the Worker `/hydra`.
-- `VisionLoop.swift` — screen → Worker `/vision` → `SceneGraph`.
-- `SceneGraph.swift` — model + label→pixel resolution.
-- `Orchestrator.swift` — the glue (replaces `CompanionManager`'s pipeline logic).
-- `Collaborators.swift` — protocols (`PointingOverlay`, `MicCapture`,
-  `AudioPlayer`) you back with the reused Clicky components, + `BookingMCP` stub.
+- `HydraClient.swift` — full-duplex WS to Hydra (real OpenAI-Realtime protocol).
+- `Orchestrator.swift` — voice ⇄ tool-call routing (replaces `CompanionManager`
+  pipeline logic).
+- `Actions.swift` — the `ActionRouter`: open_app / open_url / play_music /
+  set_volume / set_reminder / check_calendar / start_background_agent / order_food.
+- `Collaborators.swift` — `MicCapture` + `AudioPlayer` protocols (back them with
+  your reused clicky audio components).
+- *(optional, unwired)* `SceneGraph.swift` + `VisionLoop.swift` for screen-awareness.
 
-## Wiring sketch (in your app entry / CompanionManager)
+## Also run (separate process, on the Mac)
+- `swiggy-agent/` — `node server.mjs` for `order_food`. See its README + `docs/SAFETY.md`.
+
+## Wiring sketch (app entry / CompanionManager)
 ```swift
-let proxy = URL(string: "wss://your-worker.workers.dev/hydra")!
-let visionURL = URL(string: "https://your-worker.workers.dev/vision")!
-let scenePrompt = /* contents of prompts/scene_graph_prompt.md text block */
+// Connect directly with the key, or via your Worker /hydra passthrough.
+let hydraURL = URL(string: "wss://api.smallest.ai/waves/v1/s2s?model=hydra&api_key=\(KEY)")!
 
-let hydra = HydraClient(proxyURL: proxy)
-let vision = VisionLoop(visionURL: visionURL, prompt: scenePrompt, intervalSeconds: 1.0)
-
+let hydra = HydraClient(url: hydraURL)
 let orchestrator = Orchestrator(
-    hydra: hydra, vision: vision,
-    overlay: myClickyOverlay,   // your PointingOverlay-conforming adapter
-    mic: myMicCapture,          // your MicCapture-conforming adapter
-    player: myPCM16Player       // your AudioPlayer-conforming adapter
+    hydra: hydra,
+    mic: myMicCapture,     // MicCapture-conforming adapter (PCM16 16k chunks)
+    player: myPCM16Player  // AudioPlayer-conforming adapter (PCM16 24k + flush)
 )
 
 let systemPrompt = /* prompts/system_prompt.md */
-let tools        = /* parsed prompts/tools.json -> [["type": ...], ...] */
-orchestrator.start(systemPrompt: systemPrompt, tools: tools)
+let tools        = /* parsed prompts/tools.json "tools" array -> [[String:Any]] */
+orchestrator.start(systemPrompt: systemPrompt, tools: tools, voice: "wren")
 ```
 
-## The one boundary that needs your input
-`HydraClient` encodes the assumed Hydra wire protocol
-(`docs/HYDRA_CONTRACT.md`). Confirm the four open items in §4 of that doc, then
-adjust `HydraClient.encode*/decode` only. The Worker is a transparent
-passthrough, so it needs no protocol changes — just the endpoint + key.
+## Permissions (macOS)
+First use of Spotify/Reminders/Calendar control prompts for **Automation** /
+Calendar access — grant in System Settings → Privacy & Security. The Hydra
+protocol itself is settled in `docs/HYDRA_CONTRACT.md`.

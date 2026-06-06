@@ -1,0 +1,8 @@
+{
+  "name": "clicky-swiggy-agent",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": { "start": "node server.mjs" },
+  "dependencies": { "playwright": "^1.48.0" }
+}

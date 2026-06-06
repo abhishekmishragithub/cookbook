@@ -1,54 +1,52 @@
 # HeyClicky × Hydra — agent handoff
 
-> Read this first. It's the state + next steps so a fresh Claude Code session
-> (or a human) can continue without the original chat.
+> Read this first. State + next steps so a fresh session continues without the
+> original chat.
 
 ## What this is
-A reimagining of Farza's open-source [Clicky](https://github.com/farzaa/clicky)
-(an on-screen AI tutor for macOS) with the 3-stage voice pipeline
-(AssemblyAI + Claude + ElevenLabs) replaced by **smallest.ai Hydra**, a native
-full-duplex speech-to-speech model, paired with **Gemini** for screen grounding.
+A **hands-free voice agent that runs your Mac** (Farza's latest Clicky demo),
+powered by **smallest.ai Hydra** (native full-duplex speech-to-speech) instead
+of GPT-Realtime. You talk; it opens apps, plays music, sets volume, opens URLs,
+sets reminders, checks calendar, starts background work, and **orders food on
+Swiggy** — and talks back. You can interrupt it mid-sentence.
 
-Read in order: `README.md` → `docs/DEMO_SCRIPT.md` → `docs/PHASES.md` →
-`docs/INTEGRATION.md` → `docs/HYDRA_CONTRACT.md`.
+Read: `README.md` → `docs/DEMO_SCRIPT.md` → `docs/PHASES.md` →
+`docs/SAFETY.md` → `docs/INTEGRATION.md` → `docs/HYDRA_CONTRACT.md`.
 
-## Architecture (one line)
-Hydra runs the full-duplex voice loop and emits *semantic* tool calls
-(`point_at("Export button")`); a parallel Gemini vision loop turns screenshots
-into a scene-graph; the orchestrator resolves label→pixel coords and drives a
-pointing overlay. Voice never blocks on vision.
+## Architecture
+Hydra runs the full-duplex voice loop and emits OpenAI-Realtime-style function
+calls. The Swift `ActionRouter` (`macos/.../Actions.swift`) executes them via
+`osascript` / `NSWorkspace` / EventKit. `order_food` delegates to a Node +
+Playwright sidecar (`swiggy-agent/`) driving the user's logged-in Swiggy.
+
+## Direction note (important)
+An earlier build targeted the *older* open-source `farzaa/clicky` — a screen
+**tutor** that points at UI (Gemini vision + pointer). The product is now the
+**voice-OS-agent** above. The tutor pieces still exist and work (`web/` pointing
+demo, `vision/`, Worker `/vision`+`/tutor`, `SceneGraph.swift`/`VisionLoop.swift`)
+but are **unwired** from the current Orchestrator — optional "look at my screen".
 
 ## What's done
-- **Hydra protocol is REAL/verified** against `smallest-inc/hydra_agents`
-  (OpenAI-Realtime style; see `docs/HYDRA_CONTRACT.md`). No longer assumed.
-- `web/hydra.js` — full browser Hydra client (mic@16k → WS → playback@24k,
-  barge-in, tool calling) ported from the reference app.
-- `web/` — browser demo with **real Hydra mode** (key + screen → voice + screen
-  context + pointing) and a keyless Gemini/browser-voice stand-in mode.
-- `worker/` — Cloudflare Worker: `/hydra` WS passthrough (real endpoint +
-  api_key query param), `/vision`, `/tutor`. Typechecks clean.
-- `vision/scene_graph.mjs` — screenshot → scene-graph harness (has `--mock`).
-- `prompts/` — Hydra tutor persona + tool defs.
-- `macos/HydraClicky/` — Swift orchestrator scaffold, `HydraClient.swift` now
-  matches the real protocol (does NOT compile here; needs Xcode).
+- **Hydra protocol verified** against `smallest-inc/hydra_agents` (see
+  `docs/HYDRA_CONTRACT.md`). `web/hydra.js` is a working browser Hydra client.
+- `prompts/` — voice-OS-agent persona + 8 action tools (`prompts/tools.json`).
+- `macos/HydraClicky/` — Swift app core: `HydraClient` (real protocol),
+  `Orchestrator` (voice ⇄ actions), `Actions.swift` (the ActionRouter),
+  `Collaborators` (mic/player protocols). **Does NOT compile here — needs Xcode.**
+- `swiggy-agent/` — Playwright ordering sidecar, confirm-gated (parses clean).
+- `web/`, `worker/`, `vision/` — runnable; browser Hydra voice tester works.
 
-## What's NOT done (next steps, in order)
-1. **Verify the real Hydra browser demo** end-to-end with a live smallest.ai key
-   (mic perms, audio in/out, barge-in, point_at). Logic is in place; needs a
-   human with a key + mic. This is the fastest path to a showable demo.
-2. **Phase 0 spike (native)**: minimal Swift mic→Hydra→speaker on a Mac to
-   confirm the same feel natively. (See `docs/PHASES.md`.)
-3. Phases 1–4: wire Hydra + Gemini into a `farzaa/clicky` fork per
-   `docs/INTEGRATION.md` (HydraClient.swift already matches the real protocol).
-4. Phase 5: real-world actions (Spotify / YouTube / Airbnb / booking) via MCP
-   tool calling — generalize `BookingMCP` → `ActionRouter`.
+## What's NOT done (next, in order)
+1. Verify the browser Hydra demo with a live smallest.ai key (mic/audio/barge-in).
+2. Fork `farzaa/clicky`; build in Xcode (`docs/INTEGRATION.md`).
+3. Implement/verify each action on a Mac (Phase 2 — perms prompts expected).
+4. Swiggy: run sidecar, log in, tune `SELECTORS`, test cart→confirm→place.
 
-## Constraints learned
-- This cloud session is Linux (no Xcode) — the native Swift app must be built on
-  a Mac. The **browser demo (`web/`) needs no Mac** and uses real Hydra.
-- Hydra protocol = OpenAI-Realtime style, verified from the reference repo;
-  isolated in `web/hydra.js`, `HydraClient.swift`, and the Worker passthrough.
+## Constraints
+- This cloud session is Linux (no Xcode) — Swift must be built on a Mac. Author
+  can't run osascript/Playwright here either; logic is written, needs Mac to run.
+- `order_food` is double-gated (confirm flag + env) — never auto-pays. See SAFETY.
 
-## Run locally
-See `README.md` "See it now" and `web/README.md`. TL;DR:
-`cd web && python3 -m http.server 8080` → open localhost:8080 → "Use demo screenshot".
+## Run the browser voice tester
+`cd web && python3 -m http.server 8080` → localhost:8080 → pick a source → paste
+smallest.ai key → Connect Hydra.

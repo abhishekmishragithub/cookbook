@@ -1,60 +1,98 @@
 {
-  "_comment": "Hydra tool definitions. Schema assumes OpenAI-style function tools (name + JSON-schema parameters). Adjust the envelope to match Hydra's exact tool-calling format once confirmed (see docs/HYDRA_CONTRACT.md §4). The orchestrator executes these client-side and returns a tool.result.",
+  "_comment": "Voice-OS-agent tools for Clicky. OpenAI-Realtime/Hydra function schema ({type:'function', name, description, parameters}). Executed client-side by the Swift ActionRouter (and the web demo). Money/irreversible actions require confirm:true AND a prior spoken confirmation.",
   "tools": [
     {
       "type": "function",
-      "function": {
-        "name": "point_at",
-        "description": "Point the on-screen cursor at a UI element so the user can see exactly what you mean. Use the element's exact label from the latest ON SCREEN NOW context.",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "label": { "type": "string", "description": "Exact label of the element to point at, e.g. 'Export button'." }
-          },
-          "required": ["label"]
+      "name": "open_app",
+      "description": "Open / focus a macOS application by name (e.g. 'Spotify', 'Reminders', 'Google Chrome').",
+      "parameters": {
+        "type": "object",
+        "properties": { "name": { "type": "string" } },
+        "required": ["name"]
+      }
+    },
+    {
+      "type": "function",
+      "name": "open_url",
+      "description": "Open a URL in the default browser (e.g. a Stripe dashboard, a YouTube video, any site).",
+      "parameters": {
+        "type": "object",
+        "properties": { "url": { "type": "string" }, "browser": { "type": "string", "description": "optional app name e.g. 'Google Chrome'" } },
+        "required": ["url"]
+      }
+    },
+    {
+      "type": "function",
+      "name": "play_music",
+      "description": "Play music on Spotify. Provide a free-text query (song + artist) or a spotify: URI. Starts playback.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string", "description": "e.g. 'Back in Black AC/DC'" },
+          "uri": { "type": "string", "description": "optional exact spotify:track/playlist URI" }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "type": "function",
+      "name": "set_volume",
+      "description": "Set volume. target is 0-100. Use relative '-50%' style via 'change' if the user says 'down 50%'.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "scope": { "type": "string", "enum": ["spotify", "system"], "default": "spotify" },
+          "level": { "type": "integer", "minimum": 0, "maximum": 100, "description": "absolute target 0-100" },
+          "change_pct": { "type": "integer", "description": "relative change, e.g. -50 to halve" }
         }
       }
     },
     {
       "type": "function",
-      "function": {
-        "name": "highlight",
-        "description": "Draw an attention ring around a UI element the user should focus on. Same label space as point_at.",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "label": { "type": "string" },
-            "style": { "type": "string", "enum": ["ring", "pulse"], "default": "ring" }
-          },
-          "required": ["label"]
-        }
+      "name": "set_reminder",
+      "description": "Create a reminder in the Reminders app and optionally open Reminders to confirm.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "when": { "type": "string", "description": "natural date/time, e.g. 'Saturday 9pm' or ISO 'YYYY-MM-DDTHH:MM'" },
+          "open_after": { "type": "boolean", "default": true }
+        },
+        "required": ["title", "when"]
       }
     },
     {
       "type": "function",
-      "function": {
-        "name": "look",
-        "description": "Request a fresh read of the screen. Call this when the ON SCREEN NOW context is empty, stale, or the user just changed what's visible. Returns the updated element list.",
-        "parameters": { "type": "object", "properties": {} }
+      "name": "check_calendar",
+      "description": "Read calendar events for a day to answer questions like 'who's speaking at my YC event Wednesday'.",
+      "parameters": {
+        "type": "object",
+        "properties": { "date": { "type": "string", "description": "natural or ISO date" }, "query": { "type": "string" } },
+        "required": ["date"]
       }
     },
     {
       "type": "function",
-      "function": {
-        "name": "book_flight",
-        "description": "[Phase 5 — real-world action via MCP] Search/book a flight. Only call after the user explicitly asks and you've confirmed origin, destination, date, and that they accept the fare out loud. Returns whatever the booking MCP server reports; never fabricate a result.",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "origin": { "type": "string", "description": "Origin city or airport code." },
-            "destination": { "type": "string", "description": "Destination city or airport code." },
-            "depart_date": { "type": "string", "description": "ISO date YYYY-MM-DD." },
-            "return_date": { "type": "string", "description": "ISO date YYYY-MM-DD, omit for one-way." },
-            "passengers": { "type": "integer", "minimum": 1, "default": 1 },
-            "confirm": { "type": "boolean", "description": "true = actually book; false = search only.", "default": false }
-          },
-          "required": ["origin", "destination", "depart_date"]
-        }
+      "name": "start_background_agent",
+      "description": "Kick off a long-running task in the background (e.g. 'set up a Google Ads campaign with reasonable defaults') and return immediately.",
+      "parameters": {
+        "type": "object",
+        "properties": { "task": { "type": "string" } },
+        "required": ["task"]
+      }
+    },
+    {
+      "type": "function",
+      "name": "order_food",
+      "description": "Order food via Swiggy using the user's logged-in session and saved payment. IMPORTANT: defaults to building the cart and PAUSING at payment. Only set confirm=true AFTER the user has verbally confirmed the restaurant, item, and price.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "restaurant": { "type": "string", "description": "restaurant name to search for" },
+          "items": { "type": "array", "items": { "type": "string" }, "description": "dish names to add" },
+          "confirm": { "type": "boolean", "default": false, "description": "false = build cart, stop at payment for review; true = place the order" }
+        },
+        "required": ["restaurant", "items"]
       }
     }
   ]
