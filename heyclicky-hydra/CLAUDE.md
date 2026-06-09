@@ -30,9 +30,13 @@ but are **unwired** from the current Orchestrator — optional "look at my scree
 - **Hydra protocol verified** against `smallest-inc/hydra_agents` (see
   `docs/HYDRA_CONTRACT.md`). `web/hydra.js` is a working browser Hydra client.
 - `prompts/` — voice-OS-agent persona + 8 action tools (`prompts/tools.json`).
-- `macos/HydraClicky/` — Swift app core: `HydraClient` (real protocol),
-  `Orchestrator` (voice ⇄ actions), `Actions.swift` (the ActionRouter),
-  `Collaborators` (mic/player protocols). **Does NOT compile here — needs Xcode.**
+- `macos/HydraClicky/` — **clean SwiftUI menu-bar app** (no clicky fork needed):
+  `HydraClickyApp.swift` (MenuBarExtra + AppState + UI), `Orchestrator` (voice ⇄
+  actions + UI state), `HydraClient` (real protocol), `Actions.swift`
+  (ActionRouter), `Mic.swift` (AVAudioEngine → PCM16 16k), `Player.swift`
+  (gapless PCM16 24k + flush), `Prompts.swift` (persona+tools inline),
+  `Collaborators` (protocols). **Needs Xcode to build — see `SETUP.md`.**
+- `SETUP.md` — full local runbook (build the Xcode menu-bar app, perms, Swiggy).
 - `swiggy-agent/` — Playwright ordering sidecar, confirm-gated (parses clean).
 - `web/`, `worker/`, `vision/` — runnable; browser Hydra voice tester works.
 
