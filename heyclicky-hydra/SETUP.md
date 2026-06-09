@@ -22,33 +22,31 @@ it. Confirms Hydra works before building the app. (This page is just a tester �
 the real product is the menu-bar app below.)
 
 ## 2. Build the menu-bar app (the product)
-The Swift sources live in `macos/HydraClicky/`. Make an Xcode app around them:
+The Swift sources are in `macos/HydraClicky/`. Generate the Xcode project with
+one command — `project.yml` bakes in the Info.plist keys (LSUIElement, mic +
+calendar usage), no App Sandbox, and the deployment target, so there's **no
+manual capabilities clicking**:
 
-1. **Xcode → New → Project → macOS → App.** Name it `HydraClicky`, interface
-   **SwiftUI**, language **Swift**.
-2. Delete the generated `ContentView.swift` and the `…App.swift` Xcode made.
-3. **Add files** → add everything in `macos/HydraClicky/`:
-   `HydraClickyApp.swift`, `AppState`/UI is inside it, `Orchestrator.swift`,
-   `HydraClient.swift`, `Actions.swift`, `Mic.swift`, `Player.swift`,
-   `Prompts.swift`, `Collaborators.swift`.
-   *(Skip `SceneGraph.swift`/`VisionLoop.swift` — optional screen-awareness, unused.)*
-4. **Target → Info** add:
-   - `Application is agent (UIElement)` = **YES**  (menu-bar only, no dock icon)
-   - `Privacy - Microphone Usage Description` = "Clicky listens to your voice."
-5. **Signing & Capabilities:**
-   - **Do NOT enable App Sandbox.** Clicky shells out (`osascript`, `open`) and
-     launches apps via `NSWorkspace`; the sandbox blocks that. (Personal local
-     tool — fine.)
-   - Automatic signing with your team is enough for local runs.
-6. **Run (⌘R).** A waveform icon appears in the menu bar → click it → paste your
-   smallest.ai key → **Start listening**.
+```bash
+brew install xcodegen          # once
+cd heyclicky-hydra
+xcodegen generate              # creates HydraClicky.xcodeproj
+open HydraClicky.xcodeproj
+```
 
-### First-run permission prompts (expected)
+In Xcode: select the **HydraClicky** target → **Signing & Capabilities** → pick
+your **Team** (the only manual step) → **Run (⌘R)**. A waveform icon appears in
+the menu bar → click it → paste your smallest.ai key → **Start listening**.
+
+> Prefer not to install XcodeGen? See the manual wizard steps at the bottom of
+> this file. The one-command path above is recommended.
+
+### First-run permission prompts (expected — unavoidable, just click Allow)
 - **Microphone** — allow.
-- **Automation** — the first time it controls Spotify / Reminders / Calendar,
-  macOS prompts ("HydraClicky wants to control …"). Allow.
+- **Automation** — first time it controls Spotify / Reminders / Calendar, macOS
+  prompts ("HydraClicky wants to control …"). Allow.
 - **Calendar** access for `check_calendar`.
-Grant/manage in System Settings → Privacy & Security.
+Manage in System Settings → Privacy & Security.
 
 ### Try it
 "Open Spotify and play Back in Black by AC/DC." · "Drop Spotify to fifty percent."
@@ -83,6 +81,20 @@ Then a spoken "yes, place it" lets Clicky finish. See `docs/SAFETY.md`.
 ```bash
 cd heyclicky-hydra && claude
 ```
-`CLAUDE.md` auto-loads with full state. Good first task: *"Build/run HydraClicky
-in Xcode and fix any compile errors in the audio path."* — a local session can
-actually compile and test the mic/audio, which the cloud session couldn't.
+`CLAUDE.md` auto-loads with full state. You can even hand it the whole build:
+*"Run `xcodegen generate`, open/build HydraClicky, and fix any compile errors —
+focus on the audio path."* A local session can actually compile and test the
+mic/audio, which the cloud session couldn't.
+
+---
+
+## Appendix — manual Xcode setup (if you skip XcodeGen)
+1. **Xcode → New → Project → macOS → App** — name `HydraClicky`, SwiftUI, Swift.
+2. Delete the generated `ContentView.swift` and `…App.swift`.
+3. **Add Files** → everything in `macos/HydraClicky/` **except**
+   `SceneGraph.swift` and `VisionLoop.swift`.
+4. **Target → Info:** add `Application is agent (UIElement)` = **YES**,
+   `Privacy - Microphone Usage Description`, `Privacy - Calendars Usage Description`.
+5. **Signing & Capabilities:** **do NOT add App Sandbox** (it blocks
+   `osascript`/`NSWorkspace`); pick your Team for automatic signing.
+6. **Run (⌘R).**

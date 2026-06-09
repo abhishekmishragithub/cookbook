@@ -1,0 +1,42 @@
+# XcodeGen spec — generates HydraClicky.xcodeproj with one command.
+#   brew install xcodegen
+#   cd heyclicky-hydra && xcodegen generate && open HydraClicky.xcodeproj
+#
+# Everything that used to be manual (LSUIElement, mic usage string, NO sandbox)
+# is set here. The only thing you still pick is your signing Team in Xcode.
+
+name: HydraClicky
+options:
+  bundleIdPrefix: ai.smallest
+  deploymentTarget:
+    macOS: "13.0"          # MenuBarExtra needs macOS 13+
+  createIntermediateGroups: true
+
+targets:
+  HydraClicky:
+    type: application
+    platform: macOS
+    sources:
+      - path: macos/HydraClicky
+        excludes:
+          - "SceneGraph.swift"     # optional screen-awareness — unused, omit
+          - "VisionLoop.swift"
+    info:
+      path: macos/HydraClicky/Info.plist
+      properties:
+        LSUIElement: true          # menu-bar only, no dock icon
+        CFBundleDisplayName: Clicky
+        NSMicrophoneUsageDescription: "Clicky listens to your voice to run commands."
+        # Calendar read for check_calendar:
+        NSCalendarsUsageDescription: "Clicky reads your calendar to answer questions about your schedule."
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.smallest.hydraclicky
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        # No entitlements file is referenced on purpose → App Sandbox stays OFF,
+        # so osascript / NSWorkspace / `open` work. (Personal local tool.)
+        # Set your team here, or pick it in Xcode → Signing & Capabilities:
+        # DEVELOPMENT_TEAM: XXXXXXXXXX
