@@ -41,10 +41,17 @@ but are **unwired** from the current Orchestrator — optional "look at my scree
 - `web/`, `worker/`, `vision/` — runnable; browser Hydra voice tester works.
 
 ## What's NOT done (next, in order)
-1. Verify the browser Hydra demo with a live smallest.ai key (mic/audio/barge-in).
-2. Fork `farzaa/clicky`; build in Xcode (`docs/INTEGRATION.md`).
-3. Implement/verify each action on a Mac (Phase 2 — perms prompts expected).
-4. Swiggy: run sidecar, log in, tune `SELECTORS`, test cart→confirm→place.
+0. **App BUILDS and runs** (Xcode via `xcodegen generate`). Not yet verified
+   live end-to-end. Start here: run it, click Start listening, debug the real
+   Hydra connection + mic capture (`Mic.swift`) + playback (`Player.swift`) +
+   barge-in. Audio is the least-tested code.
+1. Verify each action live on the Mac (expect Automation/Calendar/Mic permission
+   prompts): open_app, open_url, play_music, set_volume, set_reminder,
+   check_calendar, start_background_agent.
+2. Swiggy: `cd swiggy-agent && npm install && npx playwright install chromium`,
+   `node server.mjs`, `/login` once, then tune `SELECTORS` against the live DOM.
+   Test cart→confirm→place with the double safety gate (see docs/SAFETY.md).
+3. Polish + record the demo (docs/DEMO_SCRIPT.md).
 
 ## Constraints
 - This cloud session is Linux (no Xcode) — Swift must be built on a Mac. Author
