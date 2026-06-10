@@ -29,11 +29,8 @@ final class ActionRouter {
 
     private func openApp(_ app: String) -> String {
         guard !app.isEmpty else { return ok(false, ["error": "no app name"]) }
-        let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app)
-        if NSWorkspace.shared.launchApplication(app) || url != nil {
-            return ok(true, ["opened": app])
-        }
-        // fall back to `open -a`
+        // `open -a` handles app *names* reliably (the deprecated launchApplication
+        // and urlForApplication(withBundleIdentifier:) want bundle IDs, not names).
         return shell("/usr/bin/open", ["-a", app]).0 == 0
             ? ok(true, ["opened": app]) : ok(false, ["error": "couldn't open \(app)"])
     }
